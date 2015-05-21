@@ -68,7 +68,7 @@ func main() {
 
 	}(&wg, work_queue)
 
-	// Start the dump and restore workers
+	// Start the delete workers
 	for i := 0; i <= *workers; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
