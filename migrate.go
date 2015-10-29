@@ -35,9 +35,17 @@ func key_processed() {
 
 func dump_and_restore(source_conn redis.Conn, dest_conn redis.Conn, key string) {
 	dumped_key, err := redis.String(source_conn.Do("dump", key))
+	if err != nil {
+		fmt.Println(err)
+	}
 	dumped_key_ttl, err := redis.Int64(source_conn.Do("pttl", key))
 	if err != nil {
 		fmt.Println(err)
+	}
+	// when doing pttl, -1 means no expiration
+	// when doing restore, 0 means no expiration
+	if dumped_key_ttl == -1 {
+		dumped_key_ttl = 0
 	}
 	dest_conn.Do("restore", key, dumped_key_ttl, dumped_key)
 	key_processed()
