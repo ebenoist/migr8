@@ -8,12 +8,11 @@ import (
 )
 
 var (
-	mode     string
-	source   = flag.String("source", "127.0.0.1:6379", "Redis server to pull data from")
-	batch    = flag.Int("batch", 10, "Batch size")
-	scanners = flag.Int("scanners", 1, "Count of scanners to spin up")
-	workers  = flag.Int("workers", 2, "Count of workers to spin up")
-	match    = flag.String("match", "12345", "regex of keys to delete")
+	mode    string
+	source  = flag.String("source", "127.0.0.1:6379", "Redis server to pull data from")
+	batch   = flag.Int("batch", 10, "Batch size")
+	workers = flag.Int("workers", 2, "Count of workers to spin up")
+	match   = flag.String("match", "12345", "prefix of keys to delete")
 )
 
 type Task struct {
@@ -34,53 +33,63 @@ func source_connection(source string) redis.Conn {
 	return source_conn
 }
 
+func scan_keys(queue chan Task, wg *sync.WaitGroup) {
+	var cursor int
+	cursor = 0
+	// this will store the keys of each iteration
+	var tmp_keys []string
+	conn := source_connection(*source)
+
+	key_search := fmt.Sprintf("%s*", *key_prefix)
+	fmt.Println("Starting Scan with keys", key_search)
+
+	for {
+		// we scan with our cursor offset, starting at 0
+		reply, _ := redis.Values(conn.Do("scan", cursor, "match", key_search, "count", *batch))
+
+		// this func name is confusing...it actually just converts array returns to Go values
+		redis.Scan(reply, &cursor, &tmp_keys)
+
+		// put this thing in the queue
+		queue <- Task{list: tmp_keys}
+		// check if we need to stop...
+		if cursor == 0 {
+			fmt.Println("Finished!")
+
+			// close the channel
+			close(queue)
+			wg.Done()
+			break
+		}
+	}
+}
+
+func delete_keys(queue chan Task, wg *sync.WaitGroup) {
+	source_conn := source_connection(*source)
+	for task := range queue {
+		for _, key := range task.list {
+			delete(source_conn, key)
+		}
+	}
+	wg.Done()
+}
+
 func main() {
 	// parse the cli flags
 	flag.Parse()
 
 	// grab all source keys
-	var wg sync.WaitGroup
+	wg := &sync.WaitGroup{}
 	work_queue := make(chan Task, *workers)
+
+	go scan_keys(work_queue, wg)
 
 	// Start the scanner
 	wg.Add(1)
-	go func(wg *sync.WaitGroup, work_queue chan Task) {
-		defer close(work_queue)
-		var returned_keys []string
-		var cursor int64
-		source_conn := source_connection(*source)
-
-		// Initial redis scan
-		source_keys, _ := redis.Values(source_conn.Do("scan", "0", "count", *batch, "match", *match))
-		redis.Scan(source_keys, &cursor, &returned_keys)
-		work_queue <- Task{list: returned_keys}
-
-		for {
-			reply, _ := redis.Values(source_conn.Do("scan", cursor, "count", *batch, "match", *match))
-			redis.Scan(reply, &cursor, &returned_keys)
-			// Set the cursor to the next page
-			if len(returned_keys) == 0 && cursor == 0 {
-				wg.Done()
-				break
-			}
-			work_queue <- Task{list: returned_keys}
-		}
-
-	}(&wg, work_queue)
-
 	// Start the delete workers
 	for i := 0; i <= *workers; i++ {
 		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			source_conn := source_connection(*source)
-			for job := range work_queue {
-				for _, key := range job.list {
-					delete(source_conn, key)
-				}
-			}
-		}(&wg)
-
+		go delete_keys(work_queue, wg)
 	}
 
 	// Wait for all goroutines to complete
