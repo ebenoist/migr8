@@ -17,7 +17,7 @@ Run inline:
   go run migrate.go -source=old.com:6379 -dest=new.com:6379 -key_prefix=reverb:service:bump -batch=1000 -workers=50 -clear_dest=true
 ```
 
-Compile for AWS:
+Compile for Linux:
 ```
   GOOS=linux go build migrate.go
 ```
