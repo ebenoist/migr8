@@ -1,23 +1,39 @@
-# migr8
+migr8
+---
+
 Redis Migration Utility written in Go
 
-## Running and Building
+## Build
+migr8 uses [gb](http://getgb.io) to vendor dependencies. To install it run, `go get github.com/constabulary/gb/...`
 
-Steps on how to build and run the programs
+`make build`
 
-**Migrate:**
+## Usage
+```
+NAME:
+   migr8 - It's time to move some redis
 
-Install dependencies:
-```
-  go get github.com/garyburd/redigo/redis
+USAGE:
+   bin/migr8 [global options] command [command options] [arguments...]
+
+VERSION:
+   0.0.0
+
+COMMANDS:
+   migrate	Migrate one redis to a new redis
+   delete
+   help, h	Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --source, -s "127.0.0.1:6379"	The redis server to pull data from
+   --dest, -d "127.0.0.1:6379"		The destination redis server
+   --workers, -w "2"			The count of workers to spin up
+   --batch, -b "10"			The batch size
+   --prefix, -p 			The key prefix to act on
+   --clear-dest, -c			Clear the destination of all it's keys and values
+   --help, -h				show help
+   --version, -v			print the version
 ```
 
-Run inline:
-```
-  go run migrate.go -source=old.com:6379 -dest=new.com:6379 -key_prefix=reverb:service:bump -batch=1000 -workers=50 -clear_dest=true
-```
-
-Compile for Linux:
-```
-  GOOS=linux go build migrate.go
-```
+## Compile for Linux:
+`make release`
