@@ -2,28 +2,49 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/garyburd/redigo/redis"
 )
 
-func dumpAndRestore(source_conn redis.Conn, dest_conn redis.Conn, key string) {
-	dumped_key, err := redis.String(source_conn.Do("dump", key))
-	if err != nil {
-		fmt.Println(err)
+func dumpKeyAndTTL(key string, sourceConn redis.Conn) (string, int64, error) {
+	var err error
+	var dumpedKey string
+	var ttl int64
+
+	if dumpedKey, err = redis.String(sourceConn.Do("dump", key)); err != nil {
+		return dumpedKey, ttl, err
 	}
-	dumped_key_ttl, err := redis.Int64(source_conn.Do("pttl", key))
+
+	if ttl, err := redis.Int64(sourceConn.Do("pttl", key)); err != nil {
+		return dumpedKey, ttl, err
+	}
+
+	return dumpedKey, ttl, err
+}
+
+func dumpAndRestore(sourceConn redis.Conn, destConn redis.Conn, key string) {
+	dumpedKey, dumpedKeyTTL, err := dumpKeyAndTTL(key, sourceConn)
+
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
+		return
 	}
 
 	// when doing pttl, -1 means no expiration
 	// when doing restore, 0 means no expiration
-	if dumped_key_ttl == -1 {
-		dumped_key_ttl = 0
+	if dumpedKeyTTL == -1 {
+		dumpedKeyTTL = 0
 	}
 
-	dest_conn.Do("restore", key, dumped_key_ttl, dumped_key)
+	_, err = destConn.Do("restore", key, dumpedKeyTTL, dumpedKey)
+
+	if err != nil {
+		log.Printf("error: %s\n", err)
+		return
+	}
+
 	keyProcessed()
 }
 
@@ -40,22 +61,26 @@ func migrateKeys(queue chan Task, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func clearDestination(dest string) {
+func shouldClearAllKeys(dest string) bool {
 	fmt.Println("Are you sure you want to delete all keys at", dest, "? . Please type Y or N.")
+
 	var response string
-	_, err := fmt.Scanln(&response)
-	if err != nil {
-		fmt.Println(err)
+	if _, err := fmt.Scanln(&response); err == nil {
+		return response == "Y"
 	}
 
-	if response == "Y" {
-		dest_conn := destConnection(dest)
-		fmt.Println("Deleting all keys of destination")
-		_, err := dest_conn.Do("flushall")
-		if err != nil {
-			fmt.Println(err)
+	return false
+}
+
+func clearDestination(dest string) {
+	if shouldClearAllKeys(dest) {
+		log.Println("Deleting all keys of destination")
+		destConn := destConnection(dest)
+
+		if _, err := destConn.Do("flushall"); err != nil {
+			log.Printf("error in flushing: %s\n", err)
 		}
 	} else {
-		fmt.Println("Skipping key deletion")
+		log.Println("Skipping key deletion")
 	}
 }

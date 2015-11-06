@@ -10,6 +10,12 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+type Task struct {
+	list []string
+}
+
+type Worker func(queue chan Task, wg *sync.WaitGroup)
+
 type Config struct {
 	Dest      string
 	Source    string
@@ -33,7 +39,7 @@ func main() {
 		},
 		{
 			Name:   "delete",
-			Usage:  "",
+			Usage:  "Delete all keys with the given prefix",
 			Action: Delete,
 		},
 	}
@@ -121,6 +127,7 @@ func RunAction(action Worker) {
 func Migrate(c *cli.Context) {
 	ParseConfig(c)
 	log.Printf("Running migrate with config: %+v\n", config)
+	log.SetPrefix("migrate - ")
 
 	if config.ClearDest {
 		clearDestination(c.String("dest"))
@@ -132,6 +139,7 @@ func Migrate(c *cli.Context) {
 func Delete(c *cli.Context) {
 	ParseConfig(c)
 	log.Printf("Running delete with config: %+v\n", config)
+	log.SetPrefix("delete - ")
 
 	RunAction(deleteKeys)
 }

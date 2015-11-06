@@ -7,16 +7,15 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-func deleteKey(source_conn redis.Conn, key string) {
-	redis.String(source_conn.Do("del", key))
-	log.Printf("Deleted %s \n", key)
-}
-
 func deleteKeys(queue chan Task, wg *sync.WaitGroup) {
 	sourceConn := sourceConnection(config.Source)
 	for task := range queue {
 		for _, key := range task.list {
-			deleteKey(sourceConn, key)
+			if _, err := redis.String(sourceConn.Do("del", key)); err != nil {
+				log.Printf("Deleted %s \n", key)
+			} else {
+				log.Printf("Could not deleted %s: %s\n", key, err)
+			}
 		}
 	}
 
